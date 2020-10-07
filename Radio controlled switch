@@ -1,0 +1,145 @@
+/* 
+ * File:   main.c
+ * File:   radio switch, originally for smoke unit.
+ * Author: RDF
+ *
+ * Created on August 24, 2020, 4:05 PM
+ * CCP capture mode based on code from:  https://www.electronicwings.com/pic/pic18f4550-timer-capture
+ * Sept 2020. Calibration with PicoScope and Futaba Skysport 4. Measured range of "period" is
+ * Stick Forward = 1977 micro S
+ * Stick middle = 1515 micro S
+ * Stick back = 1024 micro S
+ *   Bar graph value in software / Measured micro S	
+ *   3500                            1959
+ *   2900                            1379	
+ *   2500                            1117	
+ *   2300                            1241	
+ *   2100                            988
+ * 
+ * Pin GP1 connected to Gate of P channel MOSFET. (4.7k resistor from Gate to ground as pull down.NOT USED) Source to +5v. Smoke unit connected between Drain and ground.	
+	
+ * Connect to one of GP 0,1,4 or 5 to suit the stick position you want.	
+ * Sept 2020. Stopped working for some reason. Only triggered by r/c pulse on GP0 and then only when
+ * a test value of 2000 is inserted. Needs further work.
+ * Oct 2020. Now working fine.
+ */
+
+// PIC12F683 Configuration Bit Settings
+
+// 'C' source line configuration statements
+
+// CONFIG
+#pragma config FOSC = INTOSCIO  // Oscillator Selection bits (INTOSCIO oscillator: I/O function on RA4/OSC2/CLKOUT pin, I/O function on RA5/OSC1/CLKIN)
+#pragma config WDTE = OFF       // Watchdog Timer Enable bit (WDT disabled)
+#pragma config PWRTE = OFF      // Power-up Timer Enable bit (PWRT enabled)
+#pragma config MCLRE = OFF      // MCLR Pin Function Select bit (MCLR pin function is digital input, MCLR internally tied to VDD)
+#pragma config CP = OFF         // Code Protection bit (Program memory code protection is disabled)
+#pragma config CPD = OFF        // Data Code Protection bit (Data memory code protection is disabled)
+#pragma config BOREN = OFF      // Brown Out Detect (BOR enabled)
+#pragma config IESO = OFF       // Internal External Switchover bit (Internal External Switchover mode is disabled)
+#pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enabled bit (Fail-Safe Clock Monitor is disabled)
+
+// #pragma config statements should precede project file includes.
+// Use project enums instead of #define for ON and OFF.
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <xc.h>
+
+#define _XTAL_FREQ 8000000 // 
+#define f_timer 2000000 // Clock frequency/4
+
+unsigned long period;
+unsigned long data1, data2, bar;
+//int Frequency, bar;
+
+void main(void) {
+    OSCCON = 0b01110000; // set to 8MHz system clock. Default is 4MHz
+    GPIO = 0b000000;
+    ANSEL = 0b000000; // Digital inputs and outputs
+    CMCON0 = 0b000111; // Set for input/output. Comparator disabled.
+    // TRISIObits.TRISIO2 = 1; // Configure GP2 as input. A bit wonky! doesn't work.
+    TRISIO = 0b000100; // Configure GP2 as input. 
+    ADCON0 = 0b000000; // AD convertor disabled.
+    //WPUbits.WPU2 = 1; // set weak pull-up on GP2.NOT NEEDED.
+
+    while (1) {
+
+        // Bar graph using LEDs (GP 0,1,4,5) An attempt to make the PIC give some feedback. Missing the serial connection on the Arduino!
+
+        if (bar > 3500) { // measured  1959 micro S
+
+            GP0 = 1;
+        } else {
+            GP0 = 0;
+        }
+
+        //    while (1) {
+        // GP1 = ~GP1; // Toggle output to pulse smoke output
+        //        GP0 = !GP0; // Toggle output to pulse smoke output               
+        //       __delay_ms(300); //TEST was 2000   
+        //   }
+        //} else {
+        //    GP0 = 0;
+        // }
+
+        //bar = 2000; // TEST was 2000
+        //__delay_ms(30); //TEST 
+
+        if (bar > 2900) { // measured  1379 micro S. This one used for smoker
+
+            GP1 = 1;
+        } else {
+            GP1 = 0;
+        }
+
+        // while (1) {
+        // GP1 = ~GP1; // Toggle output to pulse smoke output
+        //   GP1 = !GP1; // Toggle output to pulse smoke output               
+        //   __delay_ms(300); //TEST was 2000
+
+        // }
+        // } else {
+        //    GP1 = 0;
+        //}
+
+        if (bar > 2500) { // measured 1117 micro S
+            GP4 = 1;
+        } else {
+            GP4 = 0;
+        }
+
+        if (bar > 2100) { // measured 988 micro S
+            //if (PIR1bits.CCP1IF = 1) { //Test that interrupt is working
+            GP5 = 1;
+        } else {
+            GP5 = 0;
+        }
+
+        //CCP Capture routine from: https://www.electronicwings.com/pic/pic18f4550-timer-capture
+        PIE1bits.CCP1IE = 1;
+        PIR1bits.CCP1IF = 0;
+        CCP1CON = 0b000101; //Capture mode is selected for detecting rising edge 
+        CCPR1 = 0x00; //CCPR1 is capture count Register which is cleared initially
+        TMR1IF = 0;
+        T1CON = 0b10000000; //Enable 16-bit TMR1 Register,No pre-scale,use internal clock,Timer OFF 
+        TMR1 = 0;
+        TMR1ON = 1; // Turn-On Timer1 
+        while (!(PIR1bits.CCP1IF)); // Wait for Interrupt flag which is generated when edge is detected.Note logical NOT operator !
+        PIR1bits.CCP1IF = 0; // reset the interrupt flag
+        data1 = CCPR1; //Copy count of 1st edge detected
+        CCP1CON = 0b000100; //Next capture mode is selected for detecting falling edge
+        while (!(PIR1bits.CCP1IF)); //Wait for Interrupt flag which is generated when edge is detected
+        PIR1bits.CCP1IF = 0; // reset the interrupt flag
+        data2 = CCPR1; //Copy count of 2nd edge detected
+
+        if (data1 < data2) {
+            /*Calculation for pulse length measurement*/
+            period = data2 - data1;
+            bar = period; // Input for bar graph
+        }
+        TMR1 = 0;
+
+    }
+}
+
