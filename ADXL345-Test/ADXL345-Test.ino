@@ -1,5 +1,5 @@
 
-// Very useful guide to ADXL345 for use as level sensor:
+// Very useful guide to ADXL345 for use as level sensor with Nano:
 // https://www.best-microcontroller-projects.com/adxl345.html
 // By John Main © best-microcontroller-projects.com
 // This sketch outputs serial data as 2 parameters (roll and pitch)
